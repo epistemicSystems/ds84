@@ -72,14 +72,29 @@ cp .env.example .env
 docker-compose up -d
 ```
 
-6. **Run the API server**:
+6. **Initialize database**:
+```bash
+python scripts/init_database.py
+```
+
+7. **Populate with sample data** (optional but recommended):
+```bash
+python scripts/populate_database.py --count 50 --verify
+```
+
+8. **Run the API server**:
 ```bash
 uvicorn app.main:app --reload
 ```
 
-7. **Visit API documentation**:
+9. **Visit API documentation**:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
+
+10. **Test the API** (optional):
+```bash
+python scripts/test_api.py
+```
 
 ## API Endpoints
 
@@ -87,14 +102,35 @@ uvicorn app.main:app --reload
 
 **POST** `/api/property-search`
 
-Search for properties using natural language queries.
+Search for properties using natural language queries with multiple search modes.
+
+#### Search Modes
+
+- **`vector`** (default): Semantic similarity search using embeddings - best for natural language queries
+- **`hybrid`**: Combined vector search with structured filters - balances semantic and exact matching
+- **`simulated`**: LLM-generated results - useful for testing without a populated database
+
+#### Example: Vector Search
 
 ```bash
 curl -X POST http://localhost:8000/api/property-search \
   -H "Content-Type: application/json" \
   -d '{
     "query": "I need a modern 3-bedroom home with a view of the water, ideally with an open floor plan and within walking distance to restaurants. My budget is around $750,000.",
-    "user_id": "user123"
+    "search_mode": "vector",
+    "limit": 10
+  }'
+```
+
+#### Example: Simulated Search (No Database Required)
+
+```bash
+curl -X POST http://localhost:8000/api/property-search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Find me a family-friendly 4-bedroom house with good schools",
+    "search_mode": "simulated",
+    "limit": 5
   }'
 ```
 
@@ -220,6 +256,9 @@ mypy app/
 # Connect to PostgreSQL
 docker exec -it realtor-ai-db psql -U postgres -d realtor_ai
 
+# Connect to vector database
+docker exec -it realtor-ai-vector psql -U postgres -d vector_store
+
 # View logs
 docker-compose logs -f
 
@@ -227,6 +266,54 @@ docker-compose logs -f
 docker-compose down -v
 docker-compose up -d
 ```
+
+### Data Population Scripts
+
+#### Initialize Database Schema
+
+```bash
+python scripts/init_database.py
+```
+
+Creates the properties table with pgvector extension and necessary indexes.
+
+#### Populate Database
+
+```bash
+# Basic usage (generates 50 properties per area for default areas)
+python scripts/populate_database.py
+
+# Custom areas and count
+python scripts/populate_database.py --areas 95113 94301 --count 100
+
+# With verification
+python scripts/populate_database.py --count 50 --verify
+
+# Quiet mode
+python scripts/populate_database.py --quiet
+```
+
+Generates realistic property data using LLM, creates embeddings, and stores in the vector database.
+
+**Options:**
+- `--areas`: ZIP codes to generate properties for (default: 95113, 95125, 94301, 94041, 94103)
+- `--count`: Number of properties per area (default: 50)
+- `--verify`: Run verification test after population
+- `--quiet`: Suppress progress output
+
+#### Test API
+
+```bash
+python scripts/test_api.py
+```
+
+Runs a comprehensive test suite against the running API:
+1. Health check
+2. Property search (simulated mode)
+3. Property search (vector mode - if database populated)
+4. Agent analysis
+
+The script is interactive and will ask before running vector search tests.
 
 ## Claude Code Integration
 
@@ -246,10 +333,18 @@ See `.claude/README.md` for details.
 
 The project follows a progressive implementation strategy across 4 levels:
 
-- **Level 1**: Prompt chaining foundation ✅ **(Current)**
-- **Level 2**: Decomposed cognitive functions
-- **Level 3**: Formalized cognitive transitions
-- **Level 4**: Meta-cognitive optimization
+- **Level 1**: Prompt chaining foundation ✅ **COMPLETE**
+  - Basic workflows implemented
+  - LLM service layer
+  - Prompt management system
+- **Level 2**: Enhanced workflows ✅ **COMPLETE** (Week 2)
+  - Real vector search integration
+  - MLS data extraction service
+  - Embedding generation in workflow
+  - Bulk data import tools
+  - Search mode selection (vector/hybrid/simulated)
+- **Level 3**: Formalized cognitive transitions (In Progress)
+- **Level 4**: Meta-cognitive optimization (Planned)
 
 See `IMPLEMENTATION_ROADMAP.md` for the complete 8-week plan.
 
@@ -270,11 +365,13 @@ See `IMPLEMENTATION_ROADMAP.md` for the complete 8-week plan.
 - Implicit preference inference
 - Context-aware search
 
-### Vector Search
-- Property embedding generation
-- Semantic similarity search
-- Hybrid search (vector + filters)
-- HNSW indexing for performance
+### Vector Search ✅ (NEW in Week 2)
+- **Property embedding generation** - Convert properties to semantic vectors
+- **Semantic similarity search** - Find properties by meaning, not just keywords
+- **Hybrid search** - Combine vector search with structured filters
+- **HNSW indexing** - Fast approximate nearest neighbor search
+- **Multiple search modes** - Vector, hybrid, or simulated
+- **Batch processing** - Efficient embedding generation for large datasets
 
 ### Agent Analytics
 - Performance metric calculation

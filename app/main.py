@@ -1,8 +1,8 @@
 """FastAPI application entry point for Realtor AI Copilot"""
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Dict, List, Any, Optional
+from pydantic import BaseModel, Field
+from typing import Dict, List, Any, Optional, Literal
 from app.services.workflow_service import workflow_service
 from app.services.agent_analysis_workflow import agent_workflow
 from app.config import settings
@@ -31,12 +31,24 @@ class PropertySearchRequest(BaseModel):
     """Request model for property search"""
     query: str
     user_id: Optional[str] = None
+    search_mode: Literal["vector", "hybrid", "simulated"] = Field(
+        default="vector",
+        description="Search mode: 'vector' for semantic search, 'hybrid' for vector + filters, 'simulated' for LLM-generated results"
+    )
+    limit: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum number of properties to return"
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
                 "query": "I need a modern 3-bedroom home with a view of the water, ideally with an open floor plan and within walking distance to restaurants. My budget is around $750,000.",
-                "user_id": "user123"
+                "user_id": "user123",
+                "search_mode": "vector",
+                "limit": 10
             }
         }
 
@@ -47,6 +59,7 @@ class PropertySearchResponse(BaseModel):
     intent: Optional[Dict[str, Any]] = None
     properties: Optional[List[Dict[str, Any]]] = None
     response: Optional[str] = None
+    search_mode: Optional[str] = None
     status: str
     error: Optional[str] = None
 
@@ -114,17 +127,34 @@ async def property_search(request: PropertySearchRequest):
     This endpoint processes natural language property queries through a multi-stage
     cognitive workflow:
     1. Intent Analysis - Parse and structure the query
-    2. Property Search - Find matching properties
+    2. Property Search - Find matching properties using selected mode:
+       - **vector**: Semantic similarity search using embeddings
+       - **hybrid**: Combined vector search with structured filters
+       - **simulated**: LLM-generated results (for testing without database)
     3. Response Generation - Create natural language response
 
     Args:
-        request: PropertySearchRequest with query and optional user_id
+        request: PropertySearchRequest with query, search_mode, and limit
 
     Returns:
         PropertySearchResponse with intent, properties, and response
+
+    Example:
+        ```json
+        {
+          "query": "Find me a spacious 4-bedroom house with a pool",
+          "search_mode": "vector",
+          "limit": 10
+        }
+        ```
     """
     try:
-        result = await workflow_service.execute(request.query, request.user_id)
+        result = await workflow_service.execute(
+            query=request.query,
+            user_id=request.user_id,
+            search_mode=request.search_mode,
+            limit=request.limit
+        )
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
