@@ -1,0 +1,220 @@
+id: "property_query_processing"
+name: "Property Query Processing Workflow"
+description: "Process natural language property queries through multi-stage cognitive workflow"
+version: "1.0.0"
+entry_point: "intent_analysis"
+
+states:
+  intent_analysis:
+    id: "intent_analysis"
+    name: "Query Intent Analysis"
+    state_type: "perception"
+    agent_type: "intent_analyzer"
+    prompt_template: "property_search.intent_analysis"
+    model: "gpt-4"
+    temperature: 0.3
+    max_tokens: 800
+    timeout: 30
+    retry_count: 2
+    description: "Analyze user intent from natural language query"
+    input_schema:
+      type: "object"
+      properties:
+        query:
+          type: "string"
+          description: "Natural language property query"
+        user_id:
+          type: "string"
+          description: "User identifier"
+      required: ["query"]
+    output_schema:
+      type: "object"
+      properties:
+        property_types:
+          type: "array"
+          items:
+            type: "string"
+        bedrooms:
+          type: "object"
+        bathrooms:
+          type: "object"
+        location:
+          type: "object"
+        price_range:
+          type: "object"
+        must_have_features:
+          type: "array"
+        nice_to_have_features:
+          type: "array"
+        style_preferences:
+          type: "array"
+        implied_preferences:
+          type: "array"
+      required: ["property_types"]
+    context_requirements:
+      - type: "user_preferences"
+        scope: "long_term"
+        required: false
+      - type: "conversation_history"
+        scope: "session"
+        required: false
+
+  property_search:
+    id: "property_search"
+    name: "Property Search Execution"
+    state_type: "reasoning"
+    agent_type: "search_executor"
+    prompt_template: "property_search.vector_search"
+    model: "gpt-3.5-turbo"
+    temperature: 0.5
+    max_tokens: 500
+    timeout: 15
+    retry_count: 3
+    description: "Execute property search based on structured intent"
+    input_schema:
+      type: "object"
+      properties:
+        intent:
+          type: "object"
+        search_mode:
+          type: "string"
+          enum: ["vector", "hybrid", "simulated"]
+        limit:
+          type: "integer"
+          minimum: 1
+          maximum: 50
+      required: ["intent", "search_mode"]
+    output_schema:
+      type: "object"
+      properties:
+        properties:
+          type: "array"
+          items:
+            type: "object"
+        count:
+          type: "integer"
+        search_metadata:
+          type: "object"
+      required: ["properties"]
+    context_requirements:
+      - type: "property_database"
+        scope: "global"
+        required: true
+
+  result_ranking:
+    id: "result_ranking"
+    name: "Result Ranking and Filtering"
+    state_type: "evaluation"
+    agent_type: "result_ranker"
+    prompt_template: "property_search.result_ranking"
+    model: "gpt-4"
+    temperature: 0.4
+    max_tokens: 1000
+    timeout: 20
+    retry_count: 2
+    description: "Rank and filter properties based on relevance"
+    input_schema:
+      type: "object"
+      properties:
+        properties:
+          type: "array"
+        intent:
+          type: "object"
+        user_preferences:
+          type: "object"
+      required: ["properties", "intent"]
+    output_schema:
+      type: "object"
+      properties:
+        ranked_properties:
+          type: "array"
+        ranking_explanation:
+          type: "string"
+      required: ["ranked_properties"]
+    context_requirements:
+      - type: "user_preferences"
+        scope: "long_term"
+        required: false
+
+  response_generation:
+    id: "response_generation"
+    name: "Natural Language Response Generation"
+    state_type: "generation"
+    agent_type: "narrator"
+    prompt_template: "property_search.property_response"
+    model: "gpt-4"
+    temperature: 0.7
+    max_tokens: 1500
+    timeout: 30
+    retry_count: 2
+    description: "Generate natural language response for search results"
+    input_schema:
+      type: "object"
+      properties:
+        query:
+          type: "string"
+        intent:
+          type: "object"
+        ranked_properties:
+          type: "array"
+      required: ["query", "ranked_properties"]
+    output_schema:
+      type: "object"
+      properties:
+        response:
+          type: "string"
+        suggestions:
+          type: "array"
+          items:
+            type: "string"
+      required: ["response"]
+    context_requirements:
+      - type: "conversation_history"
+        scope: "session"
+        required: false
+
+transitions:
+  - from_state: "intent_analysis"
+    to_state: "property_search"
+    description: "Proceed to search after intent analysis"
+
+  - from_state: "property_search"
+    to_state: "result_ranking"
+    condition:
+      field: "properties"
+      operator: "exists"
+      value: true
+    description: "Rank results if properties found"
+
+  - from_state: "property_search"
+    to_state: "response_generation"
+    condition:
+      field: "properties"
+      operator: "exists"
+      value: false
+    transformation:
+      type: "merge"
+      config:
+        default_message: "No properties found matching your criteria"
+    description: "Skip ranking if no properties found"
+
+  - from_state: "result_ranking"
+    to_state: "response_generation"
+    transformation:
+      type: "extract"
+      config:
+        fields: ["ranked_properties"]
+        rename:
+          ranked_properties: "properties"
+    description: "Pass ranked results to response generation"
+
+  - from_state: "response_generation"
+    to_state: null
+    description: "Terminal state - workflow complete"
+
+metadata:
+  category: "property_search"
+  tags: ["real-estate", "search", "nlp"]
+  author: "REALTOR AI COPILOT"
+  estimated_duration_ms: 5000
+  cost_estimate_usd: 0.05

@@ -1,11 +1,14 @@
 """FastAPI application entry point for Realtor AI Copilot"""
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Dict, List, Any, Optional, Literal
 from app.services.workflow_service import workflow_service
 from app.services.agent_analysis_workflow import agent_workflow
+from app.services.cognitive_workflow_engine import workflow_engine
+from app.services.context_manager import context_manager
 from app.config import settings
+import uuid
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -98,6 +101,52 @@ class AgentAnalysisResponse(BaseModel):
     error: Optional[str] = None
 
 
+class WorkflowExecutionRequest(BaseModel):
+    """Request model for workflow execution"""
+    workflow_id: str = Field(
+        description="ID of the workflow to execute",
+        example="property_query_processing"
+    )
+    input_data: Dict[str, Any] = Field(
+        description="Input data for the workflow",
+        example={"query": "Find me a 3-bedroom house with a pool"}
+    )
+    user_id: Optional[str] = Field(
+        default=None,
+        description="User ID for context and personalization"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "workflow_id": "property_query_processing",
+                "input_data": {"query": "Modern 3-bedroom with pool in Silicon Valley"},
+                "user_id": "user123"
+            }
+        }
+
+
+class WorkflowExecutionResponse(BaseModel):
+    """Response model for workflow execution"""
+    execution_id: str
+    workflow_id: str
+    status: str
+    result: Optional[Dict[str, Any]] = None
+    metrics: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class WorkflowListResponse(BaseModel):
+    """Response model for workflow listing"""
+    workflows: List[Dict[str, Any]]
+
+
+class WorkflowMetricsResponse(BaseModel):
+    """Response model for workflow metrics"""
+    execution_id: str
+    metrics: Dict[str, Any]
+
+
 # API Endpoints
 @app.get("/", tags=["Root"])
 async def root():
@@ -186,6 +235,226 @@ async def analyze_agent(request: AgentAnalysisRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/workflows", response_model=WorkflowListResponse, tags=["Cognitive Workflows"])
+async def list_workflows():
+    """List all available cognitive workflows
+
+    Returns a list of workflow definitions with their metadata.
+
+    Returns:
+        WorkflowListResponse with list of available workflows
+    """
+    try:
+        workflow_ids = workflow_engine.list_workflows()
+        workflows = []
+
+        for workflow_id in workflow_ids:
+            workflow = workflow_engine.get_workflow(workflow_id)
+            if workflow:
+                workflows.append({
+                    "id": workflow.id,
+                    "name": workflow.name,
+                    "description": workflow.description,
+                    "version": workflow.version,
+                    "entry_point": workflow.entry_point,
+                    "states_count": len(workflow.states),
+                    "transitions_count": len(workflow.transitions),
+                    "metadata": workflow.metadata
+                })
+
+        return {"workflows": workflows}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/workflows/execute", response_model=WorkflowExecutionResponse, tags=["Cognitive Workflows"])
+async def execute_workflow(
+    request: WorkflowExecutionRequest,
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID")
+):
+    """Execute a cognitive workflow with full context management
+
+    This endpoint executes a declarative YAML-based cognitive workflow with:
+    - Multi-stage state transitions with conditions
+    - Session and user context management
+    - Conversation history tracking
+    - Comprehensive metrics and reasoning traces
+    - Input/output schema validation
+
+    Args:
+        request: WorkflowExecutionRequest with workflow_id and input_data
+        x_session_id: Optional session ID header for context continuity
+
+    Returns:
+        WorkflowExecutionResponse with execution results and metrics
+
+    Example:
+        ```json
+        {
+          "workflow_id": "property_query_processing",
+          "input_data": {"query": "Modern 3-bedroom with pool"},
+          "user_id": "user123"
+        }
+        ```
+    """
+    try:
+        # Generate or use provided session ID
+        session_id = x_session_id or str(uuid.uuid4())
+        user_id = request.user_id or "anonymous"
+
+        # Get full context for the user/session
+        context_data = context_manager.get_full_context(
+            session_id=session_id,
+            user_id=user_id
+        )
+
+        # Add current query to conversation history
+        if "query" in request.input_data:
+            context_manager.add_message(
+                session_id=session_id,
+                role="user",
+                content=request.input_data["query"],
+                metadata={"workflow_id": request.workflow_id}
+            )
+
+        # Execute workflow
+        result = await workflow_engine.execute_workflow(
+            workflow_id=request.workflow_id,
+            input_data=request.input_data,
+            context_data=context_data
+        )
+
+        # Add response to conversation history
+        if result.get("status") == "completed" and "final_output" in result:
+            response_content = result["final_output"].get("response", "")
+            if response_content:
+                context_manager.add_message(
+                    session_id=session_id,
+                    role="assistant",
+                    content=response_content,
+                    metadata={
+                        "workflow_id": request.workflow_id,
+                        "execution_id": result.get("execution_id")
+                    }
+                )
+
+        # Infer preferences from interaction
+        if "query" in request.input_data and result.get("status") == "completed":
+            # Extract intent from result for preference inference
+            intent = result.get("final_output", {}).get("intent", {})
+            if intent:
+                context_manager.infer_preferences_from_interaction(
+                    user_id=user_id,
+                    interaction_data={"query": request.input_data["query"], "intent": intent}
+                )
+
+        return {
+            "execution_id": result.get("execution_id"),
+            "workflow_id": request.workflow_id,
+            "status": result.get("status"),
+            "result": result.get("final_output"),
+            "metrics": result.get("metrics")
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/workflows/executions/{execution_id}/metrics",
+         response_model=WorkflowMetricsResponse,
+         tags=["Cognitive Workflows"])
+async def get_execution_metrics(execution_id: str):
+    """Get detailed metrics for a workflow execution
+
+    Retrieves comprehensive metrics including:
+    - Total execution time and cost
+    - Per-state execution metrics
+    - Token usage statistics
+    - State transition history
+
+    Args:
+        execution_id: Unique workflow execution identifier
+
+    Returns:
+        WorkflowMetricsResponse with detailed metrics
+    """
+    try:
+        # In a production system, this would query a metrics database
+        # For now, return a placeholder response
+        return {
+            "execution_id": execution_id,
+            "metrics": {
+                "message": "Metrics retrieval not yet implemented",
+                "note": "Metrics are returned in the workflow execution response"
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/context/sessions/{session_id}", tags=["Context Management"])
+async def get_session_context(session_id: str):
+    """Get conversation history and context for a session
+
+    Args:
+        session_id: Session identifier
+
+    Returns:
+        Session context including conversation history
+    """
+    try:
+        context_window = context_manager.get_context_window(
+            session_id=session_id,
+            max_tokens=4000
+        )
+
+        session = context_manager.sessions.get(session_id)
+
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        return {
+            "session_id": session_id,
+            "user_id": session.user_id,
+            "created_at": session.created_at.isoformat(),
+            "last_activity": session.last_activity.isoformat(),
+            "message_count": len(session.messages),
+            "context_window": context_window
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/context/users/{user_id}/preferences", tags=["Context Management"])
+async def get_user_preferences(user_id: str):
+    """Get all preferences for a user
+
+    Args:
+        user_id: User identifier
+
+    Returns:
+        User preferences (explicit and inferred)
+    """
+    try:
+        preferences = context_manager.get_all_preferences(user_id)
+
+        if not preferences:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return {
+            "user_id": user_id,
+            "preferences": preferences
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
@@ -194,11 +463,29 @@ async def startup_event():
     print(f"Environment: {settings.environment}")
     print(f"Debug mode: {settings.debug}")
 
+    # Load cognitive workflows
+    try:
+        workflow_ids = workflow_engine.list_workflows()
+        print(f"Loaded {len(workflow_ids)} cognitive workflows:")
+        for workflow_id in workflow_ids:
+            workflow = workflow_engine.get_workflow(workflow_id)
+            if workflow:
+                print(f"  - {workflow.name} (v{workflow.version})")
+    except Exception as e:
+        print(f"Warning: Failed to load workflows: {e}")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
     print(f"Shutting down {settings.app_name}...")
+
+    # Cleanup context manager sessions
+    try:
+        context_manager.cleanup_expired_sessions()
+        print("Context manager cleanup completed")
+    except Exception as e:
+        print(f"Warning: Context cleanup failed: {e}")
 
 
 if __name__ == "__main__":

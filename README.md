@@ -98,6 +98,132 @@ python scripts/test_api.py
 
 ## API Endpoints
 
+### Cognitive Workflows ✨ NEW in Week 3
+
+#### List Available Workflows
+
+**GET** `/api/workflows`
+
+List all available cognitive workflows with their metadata.
+
+```bash
+curl http://localhost:8000/api/workflows
+```
+
+**Response:**
+```json
+{
+  "workflows": [
+    {
+      "id": "property_query_processing",
+      "name": "Property Query Processing Workflow",
+      "description": "Multi-stage property search with intent analysis...",
+      "version": "1.0.0",
+      "states_count": 4,
+      "transitions_count": 5
+    }
+  ]
+}
+```
+
+#### Execute Workflow
+
+**POST** `/api/workflows/execute`
+
+Execute a declarative YAML-based cognitive workflow with full context management.
+
+```bash
+curl -X POST http://localhost:8000/api/workflows/execute \
+  -H "Content-Type: application/json" \
+  -H "X-Session-ID: my-session-123" \
+  -d '{
+    "workflow_id": "property_query_processing",
+    "input_data": {
+      "query": "Modern 3-bedroom with pool in Silicon Valley"
+    },
+    "user_id": "user123"
+  }'
+```
+
+**Features:**
+- Multi-stage state transitions with conditions
+- Session and user context management
+- Conversation history tracking
+- Comprehensive metrics and reasoning traces
+- Input/output schema validation
+
+**Response:**
+```json
+{
+  "execution_id": "exec_abc123",
+  "workflow_id": "property_query_processing",
+  "status": "completed",
+  "result": {
+    "intent": {...},
+    "properties": [...],
+    "response": "..."
+  },
+  "metrics": {
+    "total_duration_seconds": 2.34,
+    "total_tokens": 1523,
+    "total_cost": 0.0234,
+    "states_executed": ["intent_analysis", "property_search", ...]
+  }
+}
+```
+
+#### Get Execution Metrics
+
+**GET** `/api/workflows/executions/{execution_id}/metrics`
+
+Retrieve detailed metrics for a workflow execution.
+
+### Context Management ✨ NEW in Week 3
+
+#### Get Session Context
+
+**GET** `/api/context/sessions/{session_id}`
+
+Retrieve conversation history and context for a session.
+
+```bash
+curl http://localhost:8000/api/context/sessions/my-session-123
+```
+
+**Response:**
+```json
+{
+  "session_id": "my-session-123",
+  "user_id": "user123",
+  "message_count": 5,
+  "created_at": "2024-01-15T10:30:00",
+  "last_activity": "2024-01-15T10:35:00",
+  "context_window": "User: ...\nAssistant: ..."
+}
+```
+
+#### Get User Preferences
+
+**GET** `/api/context/users/{user_id}/preferences`
+
+Get all preferences for a user (explicit and inferred).
+
+```bash
+curl http://localhost:8000/api/context/users/user123/preferences
+```
+
+**Response:**
+```json
+{
+  "user_id": "user123",
+  "preferences": {
+    "preferred_property_types": ["house", "townhouse"],
+    "price_range": {"min": 500000, "max": 1000000},
+    "must_have_features": ["pool", "garage"]
+  }
+}
+```
+
 ### Property Search
 
 **POST** `/api/property-search`
@@ -181,48 +307,168 @@ curl -X POST http://localhost:8000/api/agent-analysis \
 ```
 realtor-ai/
 ├── app/
-│   ├── api/                   # API endpoints
-│   ├── models/                # Pydantic models
-│   ├── services/              # Business logic
-│   │   ├── llm_service.py     # LLM interactions
-│   │   ├── prompt_service.py  # Prompt management
-│   │   ├── workflow_service.py
-│   │   ├── embedding_service.py
-│   │   └── agent_analysis_workflow.py
-│   ├── repositories/          # Data access
-│   │   └── vector_repository.py
-│   ├── config.py              # Configuration
-│   └── main.py                # FastAPI app
-├── prompts/                   # Prompt templates
+│   ├── models/                         # Pydantic models
+│   │   └── workflow_models.py          # ✨ Workflow definitions, state models
+│   ├── services/                       # Business logic
+│   │   ├── llm_service.py              # LLM interactions
+│   │   ├── prompt_service.py           # Prompt management
+│   │   ├── workflow_service.py         # Property search workflow
+│   │   ├── embedding_service.py        # Embedding generation
+│   │   ├── mls_extraction_service.py   # MLS data extraction
+│   │   ├── agent_analysis_workflow.py  # Agent analytics
+│   │   ├── cognitive_workflow_engine.py # ✨ Workflow execution engine
+│   │   ├── context_manager.py          # ✨ Session/user context
+│   │   └── metrics_service.py          # ✨ Metrics tracking & logging
+│   ├── repositories/                   # Data access
+│   │   └── vector_repository.py        # Vector database operations
+│   ├── config.py                       # Configuration
+│   └── main.py                         # FastAPI app with workflow endpoints
+├── workflows/                          # ✨ Declarative workflow definitions
+│   └── property_search.yaml            # ✨ Property query workflow
+├── prompts/                            # Prompt templates
 │   ├── property_search/
-│   │   ├── intent_analysis.txt
+│   │   ├── intent_analysis.txt         # Original intent analysis prompt
+│   │   ├── intent_analysis_v2.txt      # ✨ Metacognitive version
 │   │   └── property_response.txt
 │   └── agent_analysis/
 │       ├── performance_analysis.txt
 │       └── insight_generation.txt
-├── data/                      # Data files
-├── tests/                     # Test suite
-├── .claude/                   # Claude Code config
-├── docker-compose.yml
-├── requirements.txt
-└── README.md
+├── scripts/                            # Utility scripts
+│   ├── init_database.py                # Database initialization
+│   ├── populate_database.py            # Data population
+│   ├── test_api.py                     # API testing
+│   ├── test_workflow_api.py            # ✨ Cognitive workflow testing
+│   ├── visualize_workflow.py           # ✨ Workflow visualization
+│   └── evaluate_prompts.py             # ✨ Prompt evaluation framework
+├── logs/                               # ✨ Application logs
+│   └── metrics/                        # ✨ Workflow execution metrics
+├── data/                               # Data files
+├── tests/                              # Test suite
+├── .claude/                            # Claude Code config
+├── docker-compose.yml                  # Infrastructure
+├── requirements.txt                    # Dependencies
+└── README.md                           # This file
 ```
 
 ## Cognitive Workflows
 
-The system implements specialized cognitive workflows:
+The system implements specialized cognitive workflows using a sophisticated state machine architecture.
 
-### 1. Property Query Processing
+### Week 3 Enhancement: Declarative Workflows ✨
+
+Workflows are now defined declaratively in YAML files with formalized state transitions:
+
+```yaml
+# workflows/property_search.yaml
+id: "property_query_processing"
+name: "Property Query Processing Workflow"
+entry_point: "intent_analysis"
+
+states:
+  intent_analysis:
+    state_type: "perception"
+    agent_type: "semantic_parser"
+    model: "gpt-4"
+    temperature: 0.3
+    prompt_template: "property_search.intent_analysis"
+    input_schema:
+      type: "object"
+      properties:
+        query: {type: "string"}
+      required: ["query"]
+    context_requirements:
+      - type: "user_preferences"
+        scope: "long_term"
+
+transitions:
+  - from_state: "intent_analysis"
+    to_state: "property_search"
+  - from_state: "property_search"
+    to_state: "result_ranking"
+    condition:
+      field: "properties"
+      operator: "exists"
 ```
-User Query → Intent Analysis → Property Search → Result Ranking → Response Generation
+
+**Key Features:**
+- **State Types**: PERCEPTION, REASONING, GENERATION, EVALUATION
+- **Context Management**: Session, user, and long-term context scopes
+- **Conditional Transitions**: Data-driven state routing
+- **Schema Validation**: Input/output validation for each state
+- **Metrics Tracking**: Comprehensive performance monitoring
+
+### 1. Property Query Processing Workflow
+
 ```
+Intent Analysis (PERCEPTION)
+    ↓
+Property Search (REASONING)
+    ↓
+Result Ranking (EVALUATION)
+    ↓
+Response Generation (GENERATION)
+```
+
+**States:**
+1. **Intent Analysis** - Parse natural language query into structured search criteria
+2. **Property Search** - Execute vector/hybrid search against database
+3. **Result Ranking** - Re-rank results based on relevance
+4. **Response Generation** - Create natural language response
 
 ### 2. Agent Performance Analysis
+
 ```
 Agent ID → Data Collection → Metric Calculation → Comparative Analysis → Insight Generation
 ```
 
+### Workflow Visualization & Debugging
+
+```bash
+# List all workflows
+python scripts/visualize_workflow.py list
+
+# Show workflow details
+python scripts/visualize_workflow.py show --workflow property_query_processing
+
+# Visualize as graph
+python scripts/visualize_workflow.py graph --workflow property_query_processing
+
+# Validate workflow definition
+python scripts/visualize_workflow.py validate --workflow property_query_processing
+```
+
 ## Development
+
+### Testing Cognitive Workflows ✨ NEW in Week 3
+
+```bash
+# Test cognitive workflow API endpoints
+python scripts/test_workflow_api.py
+
+# This comprehensive test suite covers:
+# - Listing available workflows
+# - Executing workflows with context
+# - Retrieving execution metrics
+# - Session context management
+# - User preference tracking
+# - Multi-turn conversations
+```
+
+### Prompt Evaluation ✨ NEW in Week 3
+
+```bash
+# Evaluate intent analysis prompt
+python scripts/evaluate_prompts.py evaluate --prompt intent_analysis
+
+# Compare two prompt versions
+python scripts/evaluate_prompts.py compare
+
+# Features:
+# - Test prompts against multiple test cases
+# - LLM-based evaluation against criteria
+# - Automated scoring and reporting
+# - A/B testing between prompt versions
+```
 
 ### Running Tests
 
@@ -249,6 +495,35 @@ flake8 app/ tests/
 # Type check
 mypy app/
 ```
+
+### Metrics & Logging ✨ NEW in Week 3
+
+Comprehensive metrics tracking for all workflow executions:
+
+```bash
+# View execution logs
+tail -f logs/metrics/events_$(date +%Y-%m-%d).jsonl
+
+# Metrics are automatically collected for:
+# - Workflow start/completion
+# - State execution times
+# - Token usage per state
+# - Cost per execution
+# - State transitions
+# - Errors and failures
+```
+
+**Log Files:**
+- `logs/metrics/events_YYYY-MM-DD.jsonl` - Daily event logs (JSON Lines format)
+- `logs/metrics/{execution_id}_metrics.json` - Detailed execution metrics
+
+**Metrics Include:**
+- Total execution duration
+- Token count per state
+- Cost per state and total
+- State execution success/failure
+- Reasoning traces
+- Transition paths
 
 ### Database Management
 
@@ -343,7 +618,13 @@ The project follows a progressive implementation strategy across 4 levels:
   - Embedding generation in workflow
   - Bulk data import tools
   - Search mode selection (vector/hybrid/simulated)
-- **Level 3**: Formalized cognitive transitions (In Progress)
+- **Level 3**: Formalized cognitive transitions ✅ **COMPLETE** (Week 3)
+  - Declarative YAML workflow definitions
+  - Cognitive workflow engine with state machines
+  - Context management (session/user/long-term)
+  - Metacognitive prompt instrumentation
+  - Comprehensive metrics tracking and logging
+  - Prompt evaluation framework
 - **Level 4**: Meta-cognitive optimization (Planned)
 
 See `IMPLEMENTATION_ROADMAP.md` for the complete 8-week plan.
@@ -359,13 +640,54 @@ See `IMPLEMENTATION_ROADMAP.md` for the complete 8-week plan.
 
 ## Key Features
 
+### Level 3: Formalized Cognitive Transitions ✨ NEW in Week 3
+
+#### Declarative Workflow Engine
+- **YAML-based workflow definitions** - Define complex multi-stage workflows without code
+- **State machine execution** - Formalized state transitions with conditions
+- **Schema validation** - Input/output validation for each cognitive state
+- **Type safety** - Full Pydantic model validation throughout
+- **Workflow visualization** - Debug and visualize workflows as graphs
+
+#### Context Management System
+- **Session context** - Track conversation history per session
+- **User context** - Persistent user preferences across sessions
+- **Long-term memory** - Extended context for personalization
+- **Automatic cleanup** - Session expiration and memory management
+- **Token-aware windowing** - Intelligently manage context within token limits
+- **Preference inference** - Learn from user interactions
+
+#### Metacognitive Prompts
+- **Reasoning instrumentation** - Prompts with self-awareness of reasoning process
+- **Confidence assessment** - Explicit confidence levels for each extracted attribute
+- **Alternative interpretations** - Consider multiple interpretations of ambiguous inputs
+- **Ambiguity detection** - Identify unclear requirements
+- **Clarification recommendations** - Suggest questions to resolve ambiguities
+- **Reasoning traces** - Transparent decision-making process
+
+#### Comprehensive Metrics & Logging
+- **Workflow-level metrics** - Duration, cost, token usage per execution
+- **State-level metrics** - Performance tracking for each cognitive state
+- **Event logging** - JSON Lines format for easy analysis
+- **Error tracking** - Detailed error context and recovery paths
+- **Performance trends** - Track improvements over time
+- **Cost optimization** - Identify expensive states for optimization
+
+#### Prompt Evaluation Framework
+- **Automated testing** - Test prompts against multiple scenarios
+- **LLM-based evaluation** - Intelligent assessment against criteria
+- **A/B testing** - Compare prompt versions quantitatively
+- **Regression detection** - Ensure prompt changes don't degrade performance
+- **Scoring system** - Objective quality metrics
+
 ### Natural Language Understanding
 - Semantic query parsing
 - Intent classification
 - Implicit preference inference
 - Context-aware search
+- Metacognitive reasoning traces ✨
 
-### Vector Search ✅ (NEW in Week 2)
+### Vector Search ✅ (Implemented in Week 2)
 - **Property embedding generation** - Convert properties to semantic vectors
 - **Semantic similarity search** - Find properties by meaning, not just keywords
 - **Hybrid search** - Combine vector search with structured filters
