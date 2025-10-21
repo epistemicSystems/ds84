@@ -1,8 +1,13 @@
 """Cognitive workflow service for property search"""
 import json
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Literal
 from app.services.llm_service import llm_service
 from app.services.prompt_service import prompt_service
+from app.services.embedding_service import embedding_service
+from app.repositories.vector_repository import vector_repository
+
+
+SearchMode = Literal["vector", "hybrid", "simulated"]
 
 
 class PropertySearchWorkflow:
@@ -11,13 +16,23 @@ class PropertySearchWorkflow:
     def __init__(self):
         self.llm_service = llm_service
         self.prompt_service = prompt_service
+        self.embedding_service = embedding_service
+        self.vector_repository = vector_repository
 
-    async def execute(self, query: str, user_id: str = None) -> Dict[str, Any]:
+    async def execute(
+        self,
+        query: str,
+        user_id: str = None,
+        search_mode: SearchMode = "vector",
+        limit: int = 10
+    ) -> Dict[str, Any]:
         """Execute the property search workflow
 
         Args:
             query: Natural language property query
             user_id: Optional user identifier for context
+            search_mode: Search mode - "vector", "hybrid", or "simulated"
+            limit: Maximum number of properties to return
 
         Returns:
             Dictionary containing query, intent, properties, and response
@@ -26,8 +41,13 @@ class PropertySearchWorkflow:
             # Step 1: Analyze user intent
             intent = await self._analyze_intent(query)
 
-            # Step 2: Search for properties (simulated for prototype)
-            properties = await self._simulate_property_search(intent)
+            # Step 2: Search for properties
+            if search_mode == "vector":
+                properties = await self._vector_search(query, intent, limit)
+            elif search_mode == "hybrid":
+                properties = await self._hybrid_search(query, intent, limit)
+            else:  # simulated
+                properties = await self._simulate_property_search(intent)
 
             # Step 3: Generate response
             response = await self._generate_response(query, intent, properties)
@@ -37,6 +57,7 @@ class PropertySearchWorkflow:
                 "intent": intent,
                 "properties": properties,
                 "response": response,
+                "search_mode": search_mode,
                 "status": "success"
             }
         except Exception as e:
@@ -62,6 +83,105 @@ class PropertySearchWorkflow:
 
         # Extract JSON from response
         return self._parse_json_response(intent_response)
+
+    async def _vector_search(
+        self,
+        query: str,
+        intent: Dict[str, Any],
+        limit: int
+    ) -> List[Dict[str, Any]]:
+        """Search properties using vector similarity
+
+        Args:
+            query: Original user query
+            intent: Parsed intent
+            limit: Maximum number of results
+
+        Returns:
+            List of matching properties with similarity scores
+        """
+        # Generate query embedding
+        query_embedding = await self.embedding_service.generate_query_embedding(query)
+
+        # Search by vector
+        results = await self.vector_repository.search_by_vector(
+            query_vector=query_embedding,
+            limit=limit
+        )
+
+        # Extract properties and add similarity scores
+        properties = []
+        for property_data, similarity in results:
+            property_with_score = property_data.copy()
+            property_with_score['similarity_score'] = round(similarity, 4)
+            properties.append(property_with_score)
+
+        return properties
+
+    async def _hybrid_search(
+        self,
+        query: str,
+        intent: Dict[str, Any],
+        limit: int
+    ) -> List[Dict[str, Any]]:
+        """Search properties using hybrid approach (vector + filters)
+
+        Args:
+            query: Original user query
+            intent: Parsed intent
+            limit: Maximum number of results
+
+        Returns:
+            List of matching properties
+        """
+        # Generate query embedding
+        query_embedding = await self.embedding_service.generate_query_embedding(query)
+
+        # Build filters from intent
+        filters = self._intent_to_filters(intent)
+
+        # Hybrid search
+        results = await self.vector_repository.hybrid_search(
+            query_vector=query_embedding,
+            filters=filters,
+            limit=limit
+        )
+
+        # Extract properties and add similarity scores
+        properties = []
+        for property_data, similarity in results:
+            property_with_score = property_data.copy()
+            property_with_score['similarity_score'] = round(similarity, 4)
+            properties.append(property_with_score)
+
+        return properties
+
+    def _intent_to_filters(self, intent: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert parsed intent to database filters
+
+        Args:
+            intent: Parsed search intent
+
+        Returns:
+            Dictionary of filters for database query
+        """
+        filters = {}
+
+        # Property type filter
+        if 'property_types' in intent and intent['property_types']:
+            # For now, just use the first property type
+            # In production, support multiple types
+            filters['property_type'] = intent['property_types'][0]
+
+        # Bedroom filter (use minimum if specified)
+        if 'bedrooms' in intent and isinstance(intent['bedrooms'], dict):
+            if 'min' in intent['bedrooms']:
+                filters['bedrooms'] = intent['bedrooms']['min']
+
+        # Add more filters as needed
+        # Note: Complex filters (ranges, etc.) need custom query logic
+
+        return filters
 
     async def _simulate_property_search(self, intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Simulate property search using LLM (for prototype phase)
