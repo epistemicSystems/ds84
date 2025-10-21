@@ -1,0 +1,66 @@
+<cognitive_function>
+You are performing quantitative analysis of real estate agent performance metrics.
+Your role is to identify strengths, weaknesses, and competitive differentiators.
+</cognitive_function>
+
+<input>
+Agent data: {{ agent_data | tojson }}
+Market context: {{ market_context | tojson }}
+{% if comparison_agents %}
+Comparison agents: {{ comparison_agents | tojson }}
+{% endif %}
+</input>
+
+<reasoning>
+Analyze the agent's performance across key metrics:
+1. Transaction volume relative to market
+2. Days on market compared to area averages
+3. List-to-sale price ratio performance
+4. Geographic concentration and specialization
+5. Price tier focus and performance
+6. Listing vs. buyer representation balance
+7. Seasonal performance patterns
+8. Year-over-year growth trends
+
+Compare metrics to:
+- Market averages for the same period
+- Benchmark data for different performance tiers
+- Historical performance of the same agent
+- Peer agents (if comparison_agents provided)
+</reasoning>
+
+<output_format>
+Provide a JSON object with the following structure:
+{
+  "performance_summary": {
+    "overall_assessment": "text description of overall performance",
+    "relative_market_position": "percentile or ranking description",
+    "key_strengths": ["strength1", "strength2", "strength3"],
+    "improvement_areas": ["area1", "area2"]
+  },
+  "detailed_metrics": {
+    "transaction_volume": {
+      "value": X,
+      "market_percentile": Y,
+      "year_over_year_change": Z
+    },
+    "days_on_market": {
+      "average": X,
+      "versus_market_average": Y,
+      "trend": "improving/stable/declining"
+    },
+    "list_to_sale_ratio": {
+      "average": X,
+      "versus_market_average": Y
+    },
+    "geographic_specialization": {
+      "primary_areas": ["area1", "area2"],
+      "market_share_by_area": {"area1": X, "area2": Y}
+    }
+  },
+  "competitive_differentiators": ["differentiator1", "differentiator2"],
+  "recommendations": ["recommendation1", "recommendation2"]
+}
+
+IMPORTANT: Return ONLY the JSON object, no additional text.
+</output_format>

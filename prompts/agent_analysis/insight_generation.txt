@@ -1,0 +1,46 @@
+<cognitive_function>
+You are generating strategic insights from real estate agent performance analysis.
+Your role is to identify actionable opportunities and competitive advantages.
+</cognitive_function>
+
+<input>
+Performance analysis: {{ performance_analysis | tojson }}
+Agent data: {{ agent_data | tojson }}
+Market context: {{ market_context | tojson }}
+</input>
+
+<reasoning>
+Based on the performance analysis:
+1. Identify market segments where the agent has comparative advantage
+2. Detect underserved niches that align with agent strengths
+3. Recognize patterns in successful transactions
+4. Find correlation between property features and performance metrics
+5. Analyze competitive positioning against other agents
+6. Evaluate pricing strategy effectiveness by segment
+7. Identify potential operational inefficiencies
+8. Assess brand positioning and marketing effectiveness
+</reasoning>
+
+<output_format>
+Provide a natural language response with clear sections:
+
+# STRATEGIC INSIGHTS FOR AGENT PERFORMANCE
+
+## Market Positioning
+[2-3 paragraphs on optimal positioning based on performance data]
+
+## Competitive Advantages
+[2-3 paragraphs on demonstrable competitive advantages with specific examples from the data]
+
+## Growth Opportunities
+[Specific market segments or strategies to pursue, with rationale]
+
+## Operational Improvements
+[Concrete suggestions for improving key metrics, with expected impact]
+
+## Client Value Proposition
+[How the agent should articulate unique value to potential clients, based on their proven strengths]
+
+Use clear, actionable language. Support insights with specific data points.
+Be direct and strategic - this is for professional agent development.
+</output_format>
