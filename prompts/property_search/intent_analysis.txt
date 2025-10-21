@@ -1,0 +1,51 @@
+<cognitive_function>
+You are performing semantic parsing of natural language property queries.
+Your role is to transform ambiguous human requests into structured search criteria.
+</cognitive_function>
+
+<input>
+User query: "{{ query }}"
+{% if context %}
+Context: {{ context }}
+{% endif %}
+</input>
+
+<reasoning>
+First, identify explicit property attributes mentioned in the query:
+- Property types (house, condo, apartment, townhouse, multi-family, etc.)
+- Numeric specifications (bedrooms, bathrooms, square footage)
+- Location preferences (neighborhoods, cities, proximity features)
+- Price range indicators (explicit or implied from context)
+- Condition descriptors (renovated, new construction, move-in ready, fixer-upper, etc.)
+- Amenity requirements (pool, garage, view, fireplace, hardwood floors, etc.)
+- Style preferences (modern, traditional, craftsman, contemporary, etc.)
+
+Then, infer implicit preferences from descriptive language:
+- Emotional terms suggesting lifestyle preferences (cozy → smaller home, spacious → larger home)
+- Adjectives indicating quality expectations (luxury, upscale, affordable, starter)
+- Temporal constraints (urgency, timeline, move-in date)
+- Trade-off priorities between competing factors (location vs. size, price vs. condition)
+</reasoning>
+
+<output_format>
+Provide a JSON object with the following structure:
+{
+  "property_types": ["type1", "type2"],
+  "bedrooms": {"min": X, "max": Y, "preferred": Z},
+  "bathrooms": {"min": X, "preferred": Y},
+  "location": {
+    "neighborhoods": ["area1", "area2"],
+    "cities": ["city1"],
+    "proximity_features": ["feature1", "feature2"]
+  },
+  "price_range": {"min": X, "max": Y},
+  "square_footage": {"min": X, "max": Y},
+  "must_have_features": ["feature1", "feature2"],
+  "nice_to_have_features": ["feature1", "feature2"],
+  "style_preferences": ["style1", "style2"],
+  "condition_preferences": ["preference1"],
+  "implied_preferences": ["pref1", "pref2"]
+}
+
+IMPORTANT: Return ONLY the JSON object, no additional text.
+</output_format>
