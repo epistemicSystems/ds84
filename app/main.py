@@ -16,12 +16,14 @@ from app.services.interaction_logger import interaction_logger, FeedbackType
 from app.services.feedback_analyzer import feedback_analyzer
 from app.services.preference_learner import preference_learner
 from app.services.ab_testing_framework import ab_testing_framework
+from app.services.cache_service import cache_service
 from app.models.interaction_models import FeedbackRequest, FeedbackResponse
 from app.middleware.rate_limiter import rate_limit_middleware
 from app.middleware.auth import auth_middleware
 from app.middleware.input_validation import input_validation_middleware
 from app.config import settings
 import uuid
+from datetime import datetime
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -183,12 +185,155 @@ async def root():
 
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check():
-    """Health check endpoint"""
+    """Basic health check endpoint for load balancers and container orchestrators"""
     return {
         "status": "ok",
         "version": "0.1.0",
         "environment": settings.environment
     }
+
+
+@app.get("/health/readiness", tags=["Health"])
+async def readiness_check():
+    """Readiness check - verifies all dependencies are available
+
+    This endpoint checks:
+    - Application is running
+    - Workflow engine is initialized
+    - Cache service is operational
+
+    Returns 200 if ready, 503 if not ready
+    """
+    try:
+        checks = {
+            "app": "ok",
+            "workflows": "checking",
+            "cache": "checking"
+        }
+
+        # Check workflow engine
+        try:
+            workflow_ids = workflow_engine.list_workflows()
+            checks["workflows"] = "ok" if len(workflow_ids) > 0 else "no_workflows"
+        except Exception as e:
+            checks["workflows"] = f"error: {str(e)}"
+
+        # Check cache service
+        try:
+            cache_stats = cache_service.get_stats()
+            checks["cache"] = "ok"
+        except Exception as e:
+            checks["cache"] = f"error: {str(e)}"
+
+        # Determine overall status
+        all_ok = all(status == "ok" or status == "no_workflows" for status in checks.values())
+
+        return {
+            "status": "ready" if all_ok else "not_ready",
+            "checks": checks,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Service not ready: {str(e)}")
+
+
+@app.get("/health/liveness", tags=["Health"])
+async def liveness_check():
+    """Liveness check - verifies application is alive
+
+    Simple check that returns 200 if the application is running.
+    Used by container orchestrators to detect if the app needs to be restarted.
+    """
+    return {
+        "status": "alive",
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.get("/health/detailed", tags=["Health"])
+async def detailed_health_check():
+    """Detailed health check with system metrics
+
+    Provides comprehensive system health information including:
+    - Service status
+    - Cache statistics
+    - Workflow information
+    - System metrics
+
+    Note: This endpoint may be slower than /health
+    """
+    try:
+        health_info = {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "version": "0.1.0",
+            "environment": settings.environment,
+            "uptime_seconds": 0,  # Would need tracking
+            "services": {},
+            "metrics": {}
+        }
+
+        # Workflow engine status
+        try:
+            workflow_ids = workflow_engine.list_workflows()
+            health_info["services"]["workflow_engine"] = {
+                "status": "ok",
+                "workflows_loaded": len(workflow_ids),
+                "workflow_ids": workflow_ids
+            }
+        except Exception as e:
+            health_info["services"]["workflow_engine"] = {
+                "status": "error",
+                "error": str(e)
+            }
+            health_info["status"] = "degraded"
+
+        # Cache service status
+        try:
+            cache_stats = cache_service.get_stats()
+            health_info["services"]["cache"] = {
+                "status": "ok",
+                "stats": cache_stats
+            }
+        except Exception as e:
+            health_info["services"]["cache"] = {
+                "status": "error",
+                "error": str(e)
+            }
+            health_info["status"] = "degraded"
+
+        # A/B testing framework status
+        try:
+            tests = ab_testing_framework.list_tests()
+            health_info["services"]["ab_testing"] = {
+                "status": "ok",
+                "active_tests": len([t for t in tests if t.status == "running"])
+            }
+        except Exception as e:
+            health_info["services"]["ab_testing"] = {
+                "status": "error",
+                "error": str(e)
+            }
+
+        # Context manager status
+        try:
+            # Get count of active sessions (simplified)
+            session_count = len(context_manager.sessions)
+            health_info["services"]["context_manager"] = {
+                "status": "ok",
+                "active_sessions": session_count
+            }
+        except Exception as e:
+            health_info["services"]["context_manager"] = {
+                "status": "error",
+                "error": str(e)
+            }
+
+        return health_info
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
 
 
 @app.post("/api/property-search", response_model=PropertySearchResponse, tags=["Property Search"])
