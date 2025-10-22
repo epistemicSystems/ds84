@@ -1,42 +1,176 @@
 version: '3.8'
 
 services:
+  # PostgreSQL database with pgvector extension
   db:
-    image: postgres:14
+    image: ankane/pgvector:latest
     container_name: realtor-ai-db
     environment:
+      POSTGRES_DB: realtor_ai
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: realtor_ai
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - realtor-ai-network
     restart: unless-stopped
 
-  pgvector:
-    image: ankane/pgvector:latest
-    container_name: realtor-ai-vector
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: vector_store
+  # Redis for distributed caching (optional enhancement)
+  redis:
+    image: redis:7-alpine
+    container_name: realtor-ai-redis
     ports:
-      - "5433:5432"
+      - "6379:6379"
     volumes:
-      - pgvector_data:/var/lib/postgresql/data
+      - redis_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - realtor-ai-network
     restart: unless-stopped
+
+  # Realtor AI Copilot API
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: realtor-ai-api
+    environment:
+      # Database
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/realtor_ai
+
+      # Application
+      ENVIRONMENT: development
+      DEBUG: "true"
+      LOG_LEVEL: INFO
+
+      # OpenAI API
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+
+      # Redis (optional)
+      REDIS_URL: redis://redis:6379/0
+
+      # Server
+      HOST: 0.0.0.0
+      PORT: 8000
+      WORKERS: 4
+
+      # Rate Limiting
+      RATE_LIMIT_REQUESTS_PER_MINUTE: 60
+      RATE_LIMIT_REQUESTS_PER_HOUR: 1000
+      RATE_LIMIT_REQUESTS_PER_DAY: 10000
+
+      # Caching
+      CACHE_EMBEDDING_SIZE: 10000
+      CACHE_PROMPT_SIZE: 1000
+      CACHE_QUERY_SIZE: 5000
+      CACHE_DEFAULT_TTL: 3600
+
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source code for development (hot reload)
+      - ./app:/app/app
+      - ./workflows:/app/workflows
+      - ./prompts:/app/prompts
+      - ./logs:/app/logs
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - realtor-ai-network
+    restart: unless-stopped
+
+  # Prometheus for metrics collection (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: realtor-ai-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    networks:
+      - realtor-ai-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Grafana for metrics visualization (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: realtor-ai-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - prometheus
+    networks:
+      - realtor-ai-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Nginx reverse proxy (optional, for production-like setup)
+  nginx:
+    image: nginx:alpine
+    container_name: realtor-ai-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    networks:
+      - realtor-ai-network
+    restart: unless-stopped
+    profiles:
+      - production
+
+networks:
+  realtor-ai-network:
+    driver: bridge
 
 volumes:
   postgres_data:
-  pgvector_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
