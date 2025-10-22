@@ -12,6 +12,10 @@ from app.services.adaptive_router import adaptive_router, RoutingStrategy
 from app.services.prompt_optimizer import prompt_optimizer
 from app.services.self_improvement_engine import self_improvement_engine
 from app.services.cost_quality_optimizer import cost_quality_optimizer, OptimizationObjective
+from app.services.interaction_logger import interaction_logger, FeedbackType
+from app.services.feedback_analyzer import feedback_analyzer
+from app.services.preference_learner import preference_learner
+from app.models.interaction_models import FeedbackRequest, FeedbackResponse
 from app.config import settings
 import uuid
 
@@ -701,6 +705,136 @@ async def analyze_cost_quality_tradeoff(
 
         analysis = cost_quality_optimizer.analyze_tradeoff_curve(context)
         return analysis
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/feedback", response_model=FeedbackResponse, tags=["Feedback Learning"])
+async def submit_feedback(feedback: FeedbackRequest):
+    """Submit user feedback for learning and personalization
+
+    Request body:
+    {
+      "session_id": "session_123",
+      "user_id": "user_456",
+      "feedback_type": "thumbs_up",
+      "related_query_id": "query_789",
+      "rating": 5.0
+    }
+
+    Returns:
+        Feedback confirmation
+    """
+    try:
+        feedback_id = interaction_logger.log_feedback(
+            session_id=feedback.session_id,
+            user_id=feedback.user_id or "anonymous",
+            feedback_type=FeedbackType(feedback.feedback_type),
+            related_query_id=feedback.related_query_id,
+            related_item_id=feedback.related_item_id,
+            rating=feedback.rating,
+            comment=feedback.comment
+        )
+
+        return FeedbackResponse(
+            feedback_id=feedback_id,
+            status="success",
+            message="Feedback recorded successfully"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/feedback/analysis/{user_id}", tags=["Feedback Learning"])
+async def get_feedback_analysis(user_id: str, days: int = 30):
+    """Get feedback analysis for a user
+
+    Analyzes interaction patterns to identify preferences and behaviors.
+
+    Args:
+        user_id: User identifier
+        days: Days to analyze
+
+    Returns:
+        Feedback analysis results
+    """
+    try:
+        analysis = feedback_analyzer.analyze_user_patterns(user_id, days)
+        return analysis
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/preferences/{user_id}", tags=["Feedback Learning"])
+async def get_user_preferences_learned(user_id: str):
+    """Get learned preferences for a user
+
+    Returns preferences learned from user interactions.
+
+    Args:
+        user_id: User identifier
+
+    Returns:
+        Learned preferences with confidence scores
+    """
+    try:
+        preferences = preference_learner.learn_preferences(user_id)
+        return {
+            "user_id": user_id,
+            "preferences": preferences,
+            "learned_at": preferences.get("learned_at", "").isoformat() if preferences.get("learned_at") else None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/preferences/{user_id}/explain", tags=["Feedback Learning"])
+async def explain_user_preferences(user_id: str):
+    """Get human-readable explanation of learned preferences
+
+    Args:
+        user_id: User identifier
+
+    Returns:
+        Preference explanation
+    """
+    try:
+        explanation = preference_learner.explain_preferences(user_id)
+        return explanation
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/preferences/{user_id}/apply", tags=["Feedback Learning"])
+async def apply_preferences_to_search(request: Dict[str, Any]):
+    """Apply learned preferences to enhance search query
+
+    Request body:
+    {
+      "user_id": "user_123",
+      "query": "Find me a house",
+      "intent": {...}
+    }
+
+    Returns:
+        Enhanced intent with preferences applied
+    """
+    try:
+        user_id = request.get("user_id")
+        query = request.get("query", "")
+        intent = request.get("intent", {})
+
+        enhanced_intent = preference_learner.apply_preferences_to_query(
+            user_id=user_id,
+            query=query,
+            intent=intent
+        )
+
+        return {
+            "original_intent": intent,
+            "enhanced_intent": enhanced_intent,
+            "preferences_applied": True
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
