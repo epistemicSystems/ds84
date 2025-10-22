@@ -15,7 +15,11 @@ from app.services.cost_quality_optimizer import cost_quality_optimizer, Optimiza
 from app.services.interaction_logger import interaction_logger, FeedbackType
 from app.services.feedback_analyzer import feedback_analyzer
 from app.services.preference_learner import preference_learner
+from app.services.ab_testing_framework import ab_testing_framework
 from app.models.interaction_models import FeedbackRequest, FeedbackResponse
+from app.middleware.rate_limiter import rate_limit_middleware
+from app.middleware.auth import auth_middleware
+from app.middleware.input_validation import input_validation_middleware
 from app.config import settings
 import uuid
 
@@ -36,6 +40,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add input validation middleware (first for security)
+app.middleware("http")(input_validation_middleware)
+
+# Add rate limiting middleware
+app.middleware("http")(rate_limit_middleware)
+
+# Add authentication middleware
+app.middleware("http")(auth_middleware)
 
 
 # Request/Response Models
@@ -834,6 +847,296 @@ async def apply_preferences_to_search(request: Dict[str, Any]):
             "original_intent": intent,
             "enhanced_intent": enhanced_intent,
             "preferences_applied": True
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ab-testing/tests", tags=["A/B Testing"])
+async def create_ab_test(request: Dict[str, Any]):
+    """Create a new A/B test
+
+    Request body:
+    {
+      "test_name": "Property Search Workflow Optimization",
+      "test_type": "workflow",
+      "variants": [
+        {
+          "variant_id": "control",
+          "variant_name": "Current Workflow",
+          "configuration": {...},
+          "traffic_percentage": 50.0
+        },
+        {
+          "variant_id": "optimized",
+          "variant_name": "Optimized Workflow",
+          "configuration": {...},
+          "traffic_percentage": 50.0
+        }
+      ],
+      "control_variant_id": "control",
+      "primary_metric": "success_rate",
+      "min_sample_size": 100
+    }
+
+    Returns:
+        Test ID and confirmation
+    """
+    try:
+        test_name = request.get("test_name")
+        test_type = request.get("test_type")
+        variants = request.get("variants", [])
+        control_variant_id = request.get("control_variant_id")
+        primary_metric = request.get("primary_metric", "success_rate")
+        min_sample_size = request.get("min_sample_size", 100)
+
+        test_id = ab_testing_framework.create_test(
+            test_name=test_name,
+            test_type=test_type,
+            variants=variants,
+            control_variant_id=control_variant_id,
+            primary_metric=primary_metric,
+            min_sample_size=min_sample_size
+        )
+
+        return {
+            "test_id": test_id,
+            "status": "created",
+            "message": "A/B test created successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ab-testing/tests", tags=["A/B Testing"])
+async def list_ab_tests(
+    status: Optional[str] = None,
+    test_type: Optional[str] = None
+):
+    """List all A/B tests with optional filters
+
+    Args:
+        status: Filter by status (running, completed, paused)
+        test_type: Filter by type (workflow, prompt, model, routing)
+
+    Returns:
+        List of A/B tests
+    """
+    try:
+        tests = ab_testing_framework.list_tests(
+            status=status,
+            test_type=test_type
+        )
+
+        return {
+            "tests": [
+                {
+                    "test_id": test.test_id,
+                    "test_name": test.test_name,
+                    "test_type": test.test_type,
+                    "status": test.status,
+                    "created_at": test.created_at.isoformat(),
+                    "variants_count": len(test.variants),
+                    "primary_metric": test.primary_metric
+                }
+                for test in tests
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ab-testing/tests/{test_id}", tags=["A/B Testing"])
+async def get_ab_test(test_id: str):
+    """Get detailed information about an A/B test
+
+    Args:
+        test_id: Test identifier
+
+    Returns:
+        Test details with variants and results
+    """
+    try:
+        test = ab_testing_framework.get_test(test_id)
+
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+
+        return {
+            "test_id": test.test_id,
+            "test_name": test.test_name,
+            "test_type": test.test_type,
+            "status": test.status,
+            "created_at": test.created_at.isoformat(),
+            "started_at": test.started_at.isoformat() if test.started_at else None,
+            "ended_at": test.ended_at.isoformat() if test.ended_at else None,
+            "variants": [
+                {
+                    "variant_id": v.variant_id,
+                    "variant_name": v.variant_name,
+                    "traffic_percentage": v.traffic_percentage,
+                    "samples_collected": v.samples_collected,
+                    "metric_values": v.metric_values
+                }
+                for v in test.variants
+            ],
+            "control_variant_id": test.control_variant_id,
+            "min_sample_size": test.min_sample_size,
+            "primary_metric": test.primary_metric
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ab-testing/tests/{test_id}/assign", tags=["A/B Testing"])
+async def assign_variant(test_id: str, request: Dict[str, Any]):
+    """Assign a user to a test variant
+
+    Request body:
+    {
+      "user_id": "user_123"
+    }
+
+    Returns:
+        Assigned variant ID
+    """
+    try:
+        user_id = request.get("user_id")
+
+        if not user_id:
+            raise HTTPException(status_code=400, detail="user_id is required")
+
+        variant_id = ab_testing_framework.assign_variant(test_id, user_id)
+
+        return {
+            "test_id": test_id,
+            "user_id": user_id,
+            "variant_id": variant_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ab-testing/tests/{test_id}/record", tags=["A/B Testing"])
+async def record_test_result(test_id: str, request: Dict[str, Any]):
+    """Record a result for an A/B test
+
+    Request body:
+    {
+      "user_id": "user_123",
+      "variant_id": "optimized",
+      "metrics": {
+        "success_rate": 0.85,
+        "latency": 1.2,
+        "cost": 0.003
+      }
+    }
+
+    Returns:
+        Confirmation
+    """
+    try:
+        user_id = request.get("user_id")
+        variant_id = request.get("variant_id")
+        metrics = request.get("metrics", {})
+
+        ab_testing_framework.record_result(
+            test_id=test_id,
+            user_id=user_id,
+            variant_id=variant_id,
+            metrics=metrics
+        )
+
+        return {
+            "status": "recorded",
+            "message": "Result recorded successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ab-testing/tests/{test_id}/analyze", tags=["A/B Testing"])
+async def analyze_ab_test(test_id: str):
+    """Analyze A/B test results with statistical significance
+
+    Args:
+        test_id: Test identifier
+
+    Returns:
+        Statistical analysis with winner determination
+    """
+    try:
+        result = ab_testing_framework.analyze_test(test_id)
+
+        return {
+            "test_id": result.test_id,
+            "test_name": result.test_name,
+            "analysis_timestamp": result.analysis_timestamp.isoformat(),
+            "has_winner": result.has_winner,
+            "winner_variant_id": result.winner_variant_id,
+            "confidence_level": result.confidence_level,
+            "p_value": result.p_value,
+            "variant_results": [
+                {
+                    "variant_id": vr.variant_id,
+                    "variant_name": vr.variant_name,
+                    "sample_size": vr.sample_size,
+                    "mean_value": vr.mean_value,
+                    "confidence_interval_lower": vr.confidence_interval_lower,
+                    "confidence_interval_upper": vr.confidence_interval_upper,
+                    "is_winner": vr.is_winner
+                }
+                for vr in result.variant_results
+            ],
+            "recommendation": result.recommendation
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ab-testing/tests/{test_id}/start", tags=["A/B Testing"])
+async def start_ab_test(test_id: str):
+    """Start an A/B test
+
+    Args:
+        test_id: Test identifier
+
+    Returns:
+        Confirmation
+    """
+    try:
+        ab_testing_framework.start_test(test_id)
+
+        return {
+            "test_id": test_id,
+            "status": "running",
+            "message": "Test started successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ab-testing/tests/{test_id}/stop", tags=["A/B Testing"])
+async def stop_ab_test(test_id: str):
+    """Stop an A/B test
+
+    Args:
+        test_id: Test identifier
+
+    Returns:
+        Confirmation with final results
+    """
+    try:
+        ab_testing_framework.stop_test(test_id)
+
+        return {
+            "test_id": test_id,
+            "status": "completed",
+            "message": "Test stopped successfully"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
