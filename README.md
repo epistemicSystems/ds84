@@ -178,6 +178,103 @@ curl -X POST http://localhost:8000/api/workflows/execute \
 
 Retrieve detailed metrics for a workflow execution.
 
+### Meta-cognitive Optimization ✨ NEW in Week 4
+
+#### Performance Analysis
+
+**GET** `/api/metacognitive/performance/{workflow_id}`
+
+Analyze workflow performance and detect bottlenecks.
+
+```bash
+curl "http://localhost:8000/api/metacognitive/performance/property_query_processing?time_window_hours=24&min_executions=5"
+```
+
+**Returns:**
+- Health score (0.0-1.0)
+- Bottlenecks by severity (critical, high, medium, low)
+- Optimization opportunities
+- Actionable recommendations
+- Per-state performance metrics
+
+#### Adaptive Routing
+
+**POST** `/api/metacognitive/route`
+
+Get intelligent routing recommendation based on strategy.
+
+```bash
+curl -X POST http://localhost:8000/api/metacognitive/route \
+  -H "Content-Type: application/json" \
+  -d '{
+    "workflow_id": "property_query_processing",
+    "state_id": "intent_analysis",
+    "context": {"task_complexity": "medium"},
+    "strategy": "balanced"
+  }'
+```
+
+**Strategies:** `performance`, `cost`, `quality`, `balanced`
+
+#### Prompt Optimization
+
+**POST** `/api/metacognitive/optimize-prompt`
+
+Automatically optimize prompts using meta-cognitive analysis.
+
+```bash
+curl -X POST http://localhost:8000/api/metacognitive/optimize-prompt \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt_key": "property_search.intent_analysis",
+    "optimization_type": "comprehensive"
+  }'
+```
+
+**Optimization types:** `conciseness`, `clarity`, `structure`, `comprehensive`
+
+#### Self-Improvement Cycle
+
+**POST** `/api/metacognitive/self-improve`
+
+Run complete self-improvement cycle for a workflow.
+
+```bash
+curl -X POST http://localhost:8000/api/metacognitive/self-improve \
+  -H "Content-Type: application/json" \
+  -d '{
+    "workflow_id": "property_query_processing",
+    "time_window_hours": 24,
+    "dry_run": true
+  }'
+```
+
+**Phases:**
+1. Performance analysis
+2. Identify optimizations
+3. Validate changes
+4. Deploy optimizations (if not dry run)
+
+#### Cost/Quality Optimization
+
+**POST** `/api/metacognitive/cost-quality`
+
+Optimize cost/quality tradeoff for workflow execution.
+
+```bash
+curl -X POST http://localhost:8000/api/metacognitive/cost-quality \
+  -H "Content-Type: application/json" \
+  -d '{
+    "objective": "balanced",
+    "context": {"estimated_tokens": 1000, "task_complexity": "medium"},
+    "constraints": {"max_cost": 0.05, "min_quality": 0.8}
+  }'
+```
+
+**GET** `/api/metacognitive/cost-quality/analyze`
+
+Analyze full cost/quality tradeoff curve with Pareto frontier.
+
 ### Context Management ✨ NEW in Week 3
 
 #### Get Session Context
@@ -625,7 +722,13 @@ The project follows a progressive implementation strategy across 4 levels:
   - Metacognitive prompt instrumentation
   - Comprehensive metrics tracking and logging
   - Prompt evaluation framework
-- **Level 4**: Meta-cognitive optimization (Planned)
+- **Level 4**: Meta-cognitive optimization ✅ **COMPLETE** (Week 4)
+  - Performance analysis and bottleneck detection
+  - Adaptive workflow routing (performance/cost/quality strategies)
+  - Automated prompt optimization
+  - Recursive self-improvement loops
+  - Cost/quality optimization balancer
+  - Pareto frontier analysis
 
 See `IMPLEMENTATION_ROADMAP.md` for the complete 8-week plan.
 
@@ -640,7 +743,44 @@ See `IMPLEMENTATION_ROADMAP.md` for the complete 8-week plan.
 
 ## Key Features
 
-### Level 3: Formalized Cognitive Transitions ✨ NEW in Week 3
+### Level 4: Meta-cognitive Optimization ✨ NEW in Week 4
+
+#### Performance Analysis Engine
+- **Bottleneck detection** - Automatically identify performance bottlenecks by severity
+- **Health score calculation** - Overall workflow health metric (0.0-1.0)
+- **Per-state metrics** - Detailed analysis of each cognitive state
+- **Impact assessment** - Quantify impact of bottlenecks on overall performance
+- **Actionable recommendations** - Specific improvement suggestions with priorities
+
+#### Adaptive Routing System
+- **Strategy-based routing** - Choose optimal execution path (performance/cost/quality/balanced)
+- **Model selection** - Automatically select best LLM based on task and constraints
+- **Performance-driven** - Learn from historical execution data
+- **Configuration variants** - Generate and evaluate multiple execution strategies
+- **Confidence scoring** - Assess routing decision quality
+
+#### Automated Prompt Optimizer
+- **Meta-cognitive analysis** - AI analyzes and improves its own prompts
+- **Token reduction** - Optimize for cost without sacrificing quality
+- **Clarity improvements** - Enhance prompt structure and specificity
+- **A/B testing** - Compare prompt versions quantitatively
+- **Batch optimization** - Optimize multiple prompts efficiently
+
+#### Recursive Self-Improvement Engine
+- **Automated optimization cycles** - Continuous system improvement
+- **Four-phase process** - Analysis → Optimization → Validation → Deployment
+- **Dry-run mode** - Test optimizations before applying
+- **Historical tracking** - Complete audit trail of improvements
+- **Intelligent validation** - Safety checks before deploying changes
+
+#### Cost/Quality Optimizer
+- **Pareto frontier** - Identify optimal cost/quality tradeoffs
+- **Multiple objectives** - Minimize cost, maximize quality, or balance both
+- **Constraint satisfaction** - Meet cost budgets or quality thresholds
+- **Efficiency scoring** - Quality per dollar metrics
+- **Use-case recommendations** - Optimal configurations for different scenarios
+
+### Level 3: Formalized Cognitive Transitions ✨ Week 3
 
 #### Declarative Workflow Engine
 - **YAML-based workflow definitions** - Define complex multi-stage workflows without code

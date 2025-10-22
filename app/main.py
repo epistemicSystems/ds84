@@ -7,6 +7,11 @@ from app.services.workflow_service import workflow_service
 from app.services.agent_analysis_workflow import agent_workflow
 from app.services.cognitive_workflow_engine import workflow_engine
 from app.services.context_manager import context_manager
+from app.services.performance_analyzer import performance_analyzer
+from app.services.adaptive_router import adaptive_router, RoutingStrategy
+from app.services.prompt_optimizer import prompt_optimizer
+from app.services.self_improvement_engine import self_improvement_engine
+from app.services.cost_quality_optimizer import cost_quality_optimizer, OptimizationObjective
 from app.config import settings
 import uuid
 
@@ -451,6 +456,251 @@ async def get_user_preferences(user_id: str):
         }
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/metacognitive/performance/{workflow_id}", tags=["Meta-cognitive Optimization"])
+async def analyze_workflow_performance(
+    workflow_id: str,
+    time_window_hours: int = 24,
+    min_executions: int = 5
+):
+    """Analyze workflow performance and detect bottlenecks
+
+    Performs comprehensive performance analysis including:
+    - Bottleneck detection
+    - Optimization opportunities
+    - Health score calculation
+    - Actionable recommendations
+
+    Args:
+        workflow_id: Workflow to analyze
+        time_window_hours: Analysis time window
+        min_executions: Minimum executions required
+
+    Returns:
+        Performance analysis with bottlenecks and recommendations
+    """
+    try:
+        analysis = performance_analyzer.analyze_workflow_performance(
+            workflow_id=workflow_id,
+            time_window_hours=time_window_hours,
+            min_executions=min_executions
+        )
+        return analysis
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/metacognitive/route", tags=["Meta-cognitive Optimization"])
+async def adaptive_route(request: Dict[str, Any]):
+    """Get adaptive routing recommendation
+
+    Uses performance data to recommend optimal execution path.
+
+    Request body:
+    {
+      "workflow_id": "property_query_processing",
+      "state_id": "intent_analysis",
+      "context": {"task_complexity": "medium"},
+      "strategy": "balanced"
+    }
+
+    Strategies: performance, cost, quality, balanced
+
+    Returns:
+        Routing decision with selected model and reasoning
+    """
+    try:
+        workflow_id = request.get("workflow_id")
+        state_id = request.get("state_id")
+        context = request.get("context", {})
+        strategy = request.get("strategy", "balanced")
+
+        decision = adaptive_router.route_execution(
+            workflow_id=workflow_id,
+            current_state_id=state_id,
+            context=context,
+            strategy=RoutingStrategy(strategy)
+        )
+
+        return {
+            "selected_model": decision.selected_model,
+            "selected_temperature": decision.selected_temperature,
+            "strategy_used": decision.strategy_used.value,
+            "confidence": decision.confidence,
+            "reasoning": decision.reasoning,
+            "estimated_metrics": decision.estimated_metrics,
+            "alternatives": decision.alternatives_considered
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/metacognitive/optimize-prompt", tags=["Meta-cognitive Optimization"])
+async def optimize_prompt_endpoint(request: Dict[str, Any]):
+    """Optimize a prompt using meta-cognitive analysis
+
+    Request body:
+    {
+      "prompt_key": "property_search.intent_analysis",
+      "optimization_type": "comprehensive",
+      "variables": {}
+    }
+
+    Optimization types: conciseness, clarity, structure, comprehensive
+
+    Returns:
+        Optimized prompt with improvements and token reduction
+    """
+    try:
+        prompt_key = request.get("prompt_key")
+        optimization_type = request.get("optimization_type", "comprehensive")
+        variables = request.get("variables")
+
+        optimized = await prompt_optimizer.optimize_prompt(
+            prompt_key=prompt_key,
+            optimization_type=optimization_type,
+            variables=variables
+        )
+
+        return {
+            "original_key": optimized.original_key,
+            "optimized_content": optimized.optimized_content,
+            "optimization_type": optimized.optimization_type,
+            "token_reduction": optimized.token_reduction,
+            "expected_improvements": optimized.expected_improvements,
+            "confidence": optimized.confidence,
+            "reasoning": optimized.reasoning
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/metacognitive/self-improve", tags=["Meta-cognitive Optimization"])
+async def run_self_improvement(request: Dict[str, Any]):
+    """Run self-improvement cycle for a workflow
+
+    Executes complete improvement cycle:
+    1. Performance analysis
+    2. Identify optimizations
+    3. Validate changes
+    4. Apply optimizations (if not dry run)
+
+    Request body:
+    {
+      "workflow_id": "property_query_processing",
+      "time_window_hours": 24,
+      "dry_run": true
+    }
+
+    Returns:
+        Improvement cycle results with actions taken
+    """
+    try:
+        workflow_id = request.get("workflow_id")
+        time_window_hours = request.get("time_window_hours", 24)
+        dry_run = request.get("dry_run", True)
+
+        result = await self_improvement_engine.run_improvement_cycle(
+            workflow_id=workflow_id,
+            time_window_hours=time_window_hours,
+            dry_run=dry_run
+        )
+
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/metacognitive/improvement-history", tags=["Meta-cognitive Optimization"])
+async def get_improvement_history(workflow_id: Optional[str] = None):
+    """Get self-improvement cycle history
+
+    Args:
+        workflow_id: Optional filter by workflow
+
+    Returns:
+        List of improvement cycles
+    """
+    try:
+        history = self_improvement_engine.get_improvement_history(workflow_id)
+        return {"history": history}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/metacognitive/cost-quality", tags=["Meta-cognitive Optimization"])
+async def optimize_cost_quality(request: Dict[str, Any]):
+    """Optimize cost/quality tradeoff
+
+    Request body:
+    {
+      "objective": "balanced",
+      "context": {
+        "estimated_tokens": 1000,
+        "task_complexity": "medium"
+      },
+      "constraints": {
+        "max_cost": 0.05,
+        "min_quality": 0.8
+      }
+    }
+
+    Objectives: minimize_cost, maximize_quality, balanced,
+                cost_constrained, quality_constrained
+
+    Returns:
+        Optimal configuration with cost/quality estimates
+    """
+    try:
+        objective = request.get("objective", "balanced")
+        context = request.get("context", {})
+        constraints = request.get("constraints")
+
+        tradeoff = cost_quality_optimizer.optimize(
+            objective=OptimizationObjective(objective),
+            context=context,
+            constraints=constraints
+        )
+
+        return {
+            "configuration": tradeoff.configuration,
+            "estimated_cost": tradeoff.estimated_cost,
+            "estimated_quality": tradeoff.estimated_quality,
+            "estimated_duration": tradeoff.estimated_duration,
+            "efficiency_score": tradeoff.efficiency_score,
+            "recommendation_reason": tradeoff.recommendation_reason
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/metacognitive/cost-quality/analyze", tags=["Meta-cognitive Optimization"])
+async def analyze_cost_quality_tradeoff(
+    estimated_tokens: int = 1000,
+    task_complexity: str = "medium"
+):
+    """Analyze full cost/quality tradeoff curve
+
+    Shows pareto frontier of optimal configurations.
+
+    Args:
+        estimated_tokens: Estimated token count
+        task_complexity: Task complexity (low, medium, high)
+
+    Returns:
+        Tradeoff analysis with pareto frontier
+    """
+    try:
+        context = {
+            "estimated_tokens": estimated_tokens,
+            "task_complexity": task_complexity
+        }
+
+        analysis = cost_quality_optimizer.analyze_tradeoff_curve(context)
+        return analysis
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
