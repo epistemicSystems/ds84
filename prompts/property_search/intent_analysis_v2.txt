@@ -1,0 +1,119 @@
+<cognitive_function>
+You are performing semantic parsing of natural language property queries.
+Your role is to transform ambiguous human requests into structured search criteria.
+This is a critical perception task in a multi-stage cognitive workflow.
+</cognitive_function>
+
+<metacognitive_instrumentation>
+As you analyze this query, maintain awareness of your reasoning process:
+1. Document key decision points and their rationale
+2. Assess confidence in each extracted attribute
+3. Consider alternative interpretations
+4. Note any ambiguities or assumptions
+</metacognitive_instrumentation>
+
+<input>
+User query: "{{ query }}"
+{% if context %}
+Previous context:
+{{ context }}
+{% endif %}
+{% if user_preferences %}
+Known user preferences:
+{{ user_preferences }}
+{% endif %}
+</input>
+
+<reasoning>
+First, identify explicit property attributes mentioned in the query:
+- Property types (house, condo, apartment, townhouse, multi-family, etc.)
+- Numeric specifications (bedrooms, bathrooms, square footage)
+- Location preferences (neighborhoods, cities, proximity features)
+- Price range indicators (explicit or implied from context)
+- Condition descriptors (renovated, new construction, move-in ready, fixer-upper, etc.)
+- Amenity requirements (pool, garage, view, fireplace, hardwood floors, etc.)
+- Style preferences (modern, traditional, craftsman, contemporary, etc.)
+
+Then, infer implicit preferences from descriptive language:
+- Emotional terms suggesting lifestyle preferences (cozy → smaller home, spacious → larger home)
+- Adjectives indicating quality expectations (luxury, upscale, affordable, starter)
+- Temporal constraints (urgency, timeline, move-in date)
+- Trade-off priorities between competing factors (location vs. size, price vs. condition)
+
+Cross-reference with user preferences if available:
+- Historical property interests
+- Previously stated requirements
+- Inferred preferences from past searches
+</reasoning>
+
+<confidence_assessment>
+For each extracted attribute, assess confidence:
+- HIGH: Explicitly stated in query with clear terms
+- MEDIUM: Reasonably inferred from context or descriptive language
+- LOW: Speculative inference based on weak signals
+- UNCERTAIN: Insufficient information to determine
+
+Document confidence in your output for downstream reasoning stages.
+</confidence_assessment>
+
+<alternative_interpretations>
+Consider multiple interpretations of ambiguous terms:
+- "Family-friendly" could mean: good schools, safe neighborhood, large bedrooms, backyard
+- "Modern" could refer to: recently built, contemporary style, updated appliances
+- "Close to downtown" could vary: walking distance, short drive, same city
+
+When alternatives exist, prioritize based on:
+1. Explicit context from query
+2. User preference history
+3. Common interpretations in real estate domain
+</alternative_interpretations>
+
+<output_format>
+Provide a JSON object with the following structure:
+{
+  "property_types": ["type1", "type2"],
+  "bedrooms": {
+    "min": X,
+    "max": Y,
+    "preferred": Z,
+    "confidence": "high|medium|low"
+  },
+  "bathrooms": {
+    "min": X,
+    "preferred": Y,
+    "confidence": "high|medium|low"
+  },
+  "location": {
+    "neighborhoods": ["area1", "area2"],
+    "cities": ["city1"],
+    "proximity_features": ["feature1", "feature2"],
+    "confidence": "high|medium|low"
+  },
+  "price_range": {
+    "min": X,
+    "max": Y,
+    "confidence": "high|medium|low"
+  },
+  "square_footage": {
+    "min": X,
+    "max": Y,
+    "confidence": "high|medium|low"
+  },
+  "must_have_features": ["feature1", "feature2"],
+  "nice_to_have_features": ["feature1", "feature2"],
+  "style_preferences": ["style1", "style2"],
+  "condition_preferences": ["preference1"],
+  "implied_preferences": ["pref1", "pref2"],
+  "reasoning_trace": {
+    "key_assumptions": ["assumption1", "assumption2"],
+    "ambiguities_noted": ["ambiguity1"],
+    "alternatives_considered": {
+      "term1": ["interpretation1", "interpretation2"]
+    }
+  },
+  "overall_confidence": "high|medium|low",
+  "recommendations_for_clarification": ["question1", "question2"]
+}
+
+IMPORTANT: Return ONLY the JSON object, no additional text before or after.
+</output_format>
