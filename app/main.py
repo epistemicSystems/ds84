@@ -17,13 +17,19 @@ from app.services.feedback_analyzer import feedback_analyzer
 from app.services.preference_learner import preference_learner
 from app.services.ab_testing_framework import ab_testing_framework
 from app.services.cache_service import cache_service
+from app.services.performance_monitor import performance_monitor
+from app.services.analytics_service import analytics_service
+from app.services.feature_flags import feature_flags
 from app.models.interaction_models import FeedbackRequest, FeedbackResponse
 from app.middleware.rate_limiter import rate_limit_middleware
 from app.middleware.auth import auth_middleware
 from app.middleware.input_validation import input_validation_middleware
 from app.config import settings
 import uuid
+import time
 from datetime import datetime
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -51,6 +57,48 @@ app.middleware("http")(rate_limit_middleware)
 
 # Add authentication middleware
 app.middleware("http")(auth_middleware)
+
+
+# Performance monitoring middleware
+@app.middleware("http")
+async def performance_tracking_middleware(request: Request, call_next):
+    """Track performance metrics for all requests"""
+    start_time = time.time()
+
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+    except Exception as e:
+        status_code = 500
+        raise
+    finally:
+        duration_ms = (time.time() - start_time) * 1000
+
+        # Record performance metrics
+        performance_monitor.record_request(
+            endpoint=request.url.path,
+            method=request.method,
+            duration_ms=duration_ms,
+            status_code=status_code
+        )
+
+        # Track analytics event if user_id available
+        user_id = request.headers.get("X-User-ID", "anonymous")
+        session_id = request.headers.get("X-Session-ID")
+
+        analytics_service.track_event(
+            event_type="api_request",
+            user_id=user_id,
+            session_id=session_id,
+            properties={
+                "endpoint": request.url.path,
+                "method": request.method,
+                "status_code": status_code,
+                "duration_ms": round(duration_ms, 2)
+            }
+        )
+
+    return response
 
 
 # Request/Response Models
@@ -1283,6 +1331,334 @@ async def stop_ab_test(test_id: str):
             "status": "completed",
             "message": "Test stopped successfully"
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/monitoring/performance", tags=["Monitoring"])
+async def get_performance_metrics(endpoint: Optional[str] = None):
+    """Get performance metrics for endpoints
+
+    Args:
+        endpoint: Optional specific endpoint to get metrics for
+
+    Returns:
+        Performance metrics including latency, error rates, and request counts
+    """
+    try:
+        if endpoint:
+            metrics = performance_monitor.get_endpoint_metrics(endpoint)
+            if not metrics:
+                raise HTTPException(status_code=404, detail="Endpoint not found")
+            return metrics
+        else:
+            return performance_monitor.get_endpoint_metrics()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/monitoring/performance/summary", tags=["Monitoring"])
+async def get_performance_summary():
+    """Get overall system performance summary
+
+    Returns:
+        Summary of all performance metrics including system resources
+    """
+    try:
+        return performance_monitor.get_summary()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/monitoring/performance/top", tags=["Monitoring"])
+async def get_top_endpoints(
+    limit: int = 10,
+    sort_by: str = "request_count"
+):
+    """Get top endpoints by metric
+
+    Args:
+        limit: Number of endpoints to return
+        sort_by: Sort metric (request_count, error_rate, avg_duration_ms)
+
+    Returns:
+        List of top endpoints
+    """
+    try:
+        return performance_monitor.get_top_endpoints(limit=limit, sort_by=sort_by)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/monitoring/performance/slow", tags=["Monitoring"])
+async def get_slow_endpoints(threshold_ms: float = 1000.0, limit: int = 10):
+    """Get slow endpoints above threshold
+
+    Args:
+        threshold_ms: Latency threshold in milliseconds
+        limit: Maximum number of endpoints to return
+
+    Returns:
+        List of slow endpoints
+    """
+    try:
+        return performance_monitor.get_slow_endpoints(
+            threshold_ms=threshold_ms,
+            limit=limit
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/monitoring/system", tags=["Monitoring"])
+async def get_system_metrics():
+    """Get current system metrics
+
+    Returns:
+        System metrics including CPU, memory, and disk usage
+    """
+    try:
+        return performance_monitor.get_system_metrics()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/analytics/user/{user_id}", tags=["Analytics"])
+async def get_user_analytics(user_id: str, days: int = 30):
+    """Get analytics for a specific user
+
+    Args:
+        user_id: User identifier
+        days: Number of days to analyze
+
+    Returns:
+        User analytics including events, sessions, and engagement
+    """
+    try:
+        return analytics_service.get_user_analytics(user_id, days)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/analytics/features", tags=["Analytics"])
+async def get_feature_usage(limit: int = 20):
+    """Get feature usage statistics
+
+    Args:
+        limit: Number of features to return
+
+    Returns:
+        Feature usage counts
+    """
+    try:
+        return {"features": analytics_service.get_feature_usage(limit)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/analytics/active-users", tags=["Analytics"])
+async def get_active_users(minutes: int = 60):
+    """Get active users in time window
+
+    Args:
+        minutes: Time window in minutes
+
+    Returns:
+        Active user count and sessions
+    """
+    try:
+        return analytics_service.get_active_users(minutes)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/analytics/session/{session_id}", tags=["Analytics"])
+async def get_session_analytics(session_id: str):
+    """Get analytics for a specific session
+
+    Args:
+        session_id: Session identifier
+
+    Returns:
+        Session analytics including events and duration
+    """
+    try:
+        result = analytics_service.get_session_analytics(session_id)
+        if not result.get("found"):
+            raise HTTPException(status_code=404, detail="Session not found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/analytics/errors", tags=["Analytics"])
+async def get_error_summary(hours: int = 24):
+    """Get error summary for time period
+
+    Args:
+        hours: Time window in hours
+
+    Returns:
+        Error summary with types and counts
+    """
+    try:
+        return analytics_service.get_error_summary(hours)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/analytics/funnel", tags=["Analytics"])
+async def analyze_conversion_funnel(request: Dict[str, Any]):
+    """Analyze conversion funnel
+
+    Request body:
+    {
+      "funnel_steps": ["page_view", "property_search", "property_view", "contact"],
+      "days": 7
+    }
+
+    Returns:
+        Funnel analysis with conversion rates
+    """
+    try:
+        funnel_steps = request.get("funnel_steps", [])
+        days = request.get("days", 7)
+
+        if not funnel_steps:
+            raise HTTPException(status_code=400, detail="funnel_steps is required")
+
+        return analytics_service.get_conversion_funnel(funnel_steps, days)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/feature-flags", tags=["Feature Flags"])
+async def list_feature_flags(enabled_only: bool = False):
+    """List all feature flags
+
+    Args:
+        enabled_only: Only return enabled flags
+
+    Returns:
+        List of feature flags
+    """
+    try:
+        flags = feature_flags.list_flags(enabled_only)
+        return {
+            "flags": [
+                {
+                    "flag_id": flag.flag_id,
+                    "name": flag.name,
+                    "description": flag.description,
+                    "enabled": flag.enabled,
+                    "strategy": flag.strategy.value,
+                    "percentage": flag.percentage,
+                    "created_at": flag.created_at.isoformat(),
+                    "updated_at": flag.updated_at.isoformat()
+                }
+                for flag in flags
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/feature-flags/{flag_id}", tags=["Feature Flags"])
+async def get_feature_flag(flag_id: str):
+    """Get specific feature flag
+
+    Args:
+        flag_id: Flag identifier
+
+    Returns:
+        Feature flag details
+    """
+    try:
+        flag = feature_flags.get_flag(flag_id)
+        if not flag:
+            raise HTTPException(status_code=404, detail="Flag not found")
+
+        return {
+            "flag_id": flag.flag_id,
+            "name": flag.name,
+            "description": flag.description,
+            "enabled": flag.enabled,
+            "strategy": flag.strategy.value,
+            "percentage": flag.percentage,
+            "user_whitelist_count": len(flag.user_whitelist),
+            "user_blacklist_count": len(flag.user_blacklist),
+            "created_at": flag.created_at.isoformat(),
+            "updated_at": flag.updated_at.isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/feature-flags/{flag_id}/check", tags=["Feature Flags"])
+async def check_feature_flag(flag_id: str, request: Dict[str, Any]):
+    """Check if feature is enabled for user
+
+    Request body:
+    {
+      "user_id": "user_123",
+      "user_attributes": {"plan": "premium"}
+    }
+
+    Returns:
+        Whether feature is enabled
+    """
+    try:
+        user_id = request.get("user_id")
+        user_attributes = request.get("user_attributes")
+
+        enabled = feature_flags.is_enabled(flag_id, user_id, user_attributes)
+
+        return {
+            "flag_id": flag_id,
+            "user_id": user_id,
+            "enabled": enabled
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/feature-flags/user/{user_id}", tags=["Feature Flags"])
+async def get_user_feature_flags(user_id: str):
+    """Get all feature flags for a user
+
+    Args:
+        user_id: User identifier
+
+    Returns:
+        Dictionary of flag IDs to enabled status
+    """
+    try:
+        user_flags = feature_flags.get_user_flags(user_id)
+        return {
+            "user_id": user_id,
+            "flags": user_flags
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/feature-flags/stats", tags=["Feature Flags"])
+async def get_feature_flag_stats():
+    """Get feature flag statistics
+
+    Returns:
+        Statistics about all feature flags
+    """
+    try:
+        return feature_flags.get_flag_stats()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
